@@ -1,0 +1,6 @@
+Franka Emika Panda model, copied unmodified from the official Google DeepMind MuJoCo Menagerie.
+Repository: https://github.com/google-deepmind/mujoco_menagerie
+Directory:  franka_emika_panda/
+Commit:     d7b481bac63d3d600ab404ee74f7474c5efe8a67 (2026-10-13)
+Files:      panda.xml, scene.xml, assets/, LICENSE, README.md, CHANGELOG.md
+License:    Apache-2.0 (see LICENSE)
