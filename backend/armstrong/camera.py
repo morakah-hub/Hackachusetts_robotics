@@ -106,8 +106,14 @@ class RGBDCamera:
                                  masked=self.masked)
 
     def close(self) -> None:
+        # Renderer.close() frees the MjrContext *before* its GL context and without making that context current.
+        # If another renderer's context is current (scene rebuilds create the new renderers first), the freed
+        # OpenGL object ids would be deleted in the new context. Make each renderer's own context current first.
         for r in (self._rgb, self._depth):
             try:
+                ctx = getattr(r, "_gl_context", None)
+                if ctx is not None:
+                    ctx.make_current()
                 r.close()
             except Exception:
                 pass

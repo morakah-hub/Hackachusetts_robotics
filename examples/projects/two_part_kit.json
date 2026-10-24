@@ -1,0 +1,116 @@
+{
+ "format": "armstrong-project",
+ "version": 1,
+ "name": "Two-part kit",
+ "description": "Two different components placed at labelled kit slots. The blue spacer is an imported STL (chamfered 40 x 60 x 45 mm print) handled through its box collision proxy; slot B requests yaw 0, so the spacer is rotated during transport.",
+ "saved_at": "2026-10-24T16:00:00",
+ "scene": {
+  "version": 1,
+  "name": "Two-part kit",
+  "camera": {
+   "id": "rgbd",
+   "position": [
+    1.18,
+    0.0,
+    1.02
+   ],
+   "target": [
+    0.5,
+    0.0,
+    0.4
+   ],
+   "vertical_fov_deg": 45.0,
+   "width": 320,
+   "height": 240,
+   "rate_hz": 5.0
+  },
+  "parts": [
+   {
+    "id": "block",
+    "name": "Orange block",
+    "role": "movable",
+    "asset_id": null,
+    "size": [
+     0.05,
+     0.05,
+     0.06
+    ],
+    "mass": 0.4,
+    "friction": 1.0,
+    "material": null,
+    "color": "orange",
+    "category": "",
+    "x": 0.48,
+    "y": 0.24,
+    "yaw": 0.0
+   },
+   {
+    "id": "spacer",
+    "name": "Blue spacer (STL)",
+    "role": "movable",
+    "asset_id": "a_d3cecbbb1d5ec8b6",
+    "size": [
+     0.04,
+     0.06,
+     0.045
+    ],
+    "mass": 0.0586,
+    "friction": 0.8,
+    "material": "pla_20",
+    "color": "blue",
+    "category": "",
+    "x": 0.4,
+    "y": 0.08,
+    "yaw": 0.5
+   }
+  ],
+  "destinations": [
+   {
+    "id": "slot_a",
+    "name": "Kit slot A",
+    "x": 0.42,
+    "y": -0.14,
+    "yaw": null,
+    "zone": "",
+    "size": [
+     0.08,
+     0.08
+    ]
+   },
+   {
+    "id": "slot_b",
+    "name": "Kit slot B",
+    "x": 0.56,
+    "y": -0.14,
+    "yaw": 0.0,
+    "zone": "",
+    "size": [
+     0.08,
+     0.08
+    ]
+   }
+  ]
+ },
+ "recipe": {
+  "version": 1,
+  "name": "Kit two parts",
+  "steps": [
+   {
+    "id": "s1",
+    "part": "block",
+    "action": "place",
+    "dest": "slot_a"
+   },
+   {
+    "id": "s2",
+    "part": "spacer",
+    "action": "place",
+    "dest": "slot_b"
+   }
+  ],
+  "sort_rules": []
+ },
+ "settings": {
+  "perception_mode": "camera_rgbd"
+ }
+}

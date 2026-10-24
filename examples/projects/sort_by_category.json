@@ -1,0 +1,159 @@
+{
+ "format": "armstrong-project",
+ "version": 1,
+ "name": "Sort by category",
+ "description": "Explicit category rules (large -> Large bin, small -> Small bin). Each part goes to the first free slot of its zone, checked against the camera view.",
+ "saved_at": "2026-10-24T16:00:00",
+ "scene": {
+  "version": 1,
+  "name": "Sort by category",
+  "camera": {
+   "id": "rgbd",
+   "position": [
+    1.18,
+    0.0,
+    1.02
+   ],
+   "target": [
+    0.5,
+    0.0,
+    0.4
+   ],
+   "vertical_fov_deg": 45.0,
+   "width": 320,
+   "height": 240,
+   "rate_hz": 5.0
+  },
+  "parts": [
+   {
+    "id": "p_orange",
+    "name": "Orange block",
+    "role": "movable",
+    "asset_id": null,
+    "size": [
+     0.05,
+     0.05,
+     0.06
+    ],
+    "mass": 0.4,
+    "friction": 1.0,
+    "material": null,
+    "color": "orange",
+    "category": "large",
+    "x": 0.46,
+    "y": 0.26,
+    "yaw": 0.0
+   },
+   {
+    "id": "p_green",
+    "name": "Green block",
+    "role": "movable",
+    "asset_id": null,
+    "size": [
+     0.05,
+     0.05,
+     0.06
+    ],
+    "mass": 0.4,
+    "friction": 1.0,
+    "material": null,
+    "color": "green",
+    "category": "large",
+    "x": 0.58,
+    "y": 0.1,
+    "yaw": 0.0
+   },
+   {
+    "id": "p_blue",
+    "name": "Blue cube",
+    "role": "movable",
+    "asset_id": null,
+    "size": [
+     0.045,
+     0.045,
+     0.045
+    ],
+    "mass": 0.1,
+    "friction": 1.0,
+    "material": null,
+    "color": "blue",
+    "category": "small",
+    "x": 0.38,
+    "y": 0.12,
+    "yaw": 0.0
+   }
+  ],
+  "destinations": [
+   {
+    "id": "bin_l1",
+    "name": "Large bin 1",
+    "x": 0.4,
+    "y": -0.14,
+    "yaw": null,
+    "zone": "Large bin",
+    "size": [
+     0.08,
+     0.08
+    ]
+   },
+   {
+    "id": "bin_l2",
+    "name": "Large bin 2",
+    "x": 0.52,
+    "y": -0.14,
+    "yaw": null,
+    "zone": "Large bin",
+    "size": [
+     0.08,
+     0.08
+    ]
+   },
+   {
+    "id": "bin_s1",
+    "name": "Small bin",
+    "x": 0.62,
+    "y": -0.02,
+    "yaw": null,
+    "zone": "Small bin",
+    "size": [
+     0.08,
+     0.08
+    ]
+   }
+  ]
+ },
+ "recipe": {
+  "version": 1,
+  "name": "Sort large and small",
+  "steps": [
+   {
+    "id": "s1",
+    "part": "p_orange",
+    "action": "sort"
+   },
+   {
+    "id": "s2",
+    "part": "p_blue",
+    "action": "sort"
+   },
+   {
+    "id": "s3",
+    "part": "p_green",
+    "action": "sort"
+   }
+  ],
+  "sort_rules": [
+   {
+    "category": "large",
+    "zone": "Large bin"
+   },
+   {
+    "category": "small",
+    "zone": "Small bin"
+   }
+  ]
+ },
+ "settings": {
+  "perception_mode": "camera_rgbd"
+ }
+}

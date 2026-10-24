@@ -1,0 +1,40 @@
+{
+ "id": "a_a99f9fba566bf862",
+ "source_name": "cube_45_ascii_mm.stl",
+ "source_format": "ascii",
+ "units": "mm",
+ "scale": 1.0,
+ "rotation_deg": [
+  0,
+  0,
+  0
+ ],
+ "source_triangles": 28,
+ "dims_m": [
+  0.045,
+  0.045,
+  0.045
+ ],
+ "triangles": 28,
+ "vertices": 16,
+ "watertight": true,
+ "volume_m3": 9.0315e-05,
+ "box_volume_m3": 9.112499999999999e-05,
+ "fill_ratio": 0.9911111111111113,
+ "top_face_fraction": 0.991111111111111,
+ "collision_proxy": "box (bounding box of the mesh)",
+ "eligible": {
+  "movable": {
+   "ok": true,
+   "reasons": []
+  },
+  "fixture": {
+   "ok": true,
+   "reasons": []
+  },
+  "visual": {
+   "ok": true,
+   "reasons": []
+  }
+ }
+}

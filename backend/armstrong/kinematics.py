@@ -1,8 +1,15 @@
 """Arm kinematics on private scratch data: FK, full-pose IK and collision checks.
 
 Pose IK is damped least squares on the 6 x 7 site Jacobian with a world-frame error
-e = [p* - p ; w * log(R* R^T)], a null-space pull toward a rest posture and joint-limit
-clamping. Nothing here writes the live simulation state.
+e = [p* - p ; w * log(R* R^T)], a null-space pull toward a rest posture and joint-limit clamping.
+
+Collision checks run on a private *planning world*: arm and finger joints from proprioception, movable parts
+at the poses supplied by the caller (camera estimates in camera mode), fixtures at their known poses. Nothing
+here writes the live simulation state. Rules (every other contact is ignored, e.g. parts resting on the table):
+* robot vs anything outside the robot (table, floor, fixtures, parts) is a collision, except the hand/fingers
+  vs the carried part while carrying;
+* robot self-contact is a collision;
+* the carried part vs anything other than the hand is a collision, except the table while lifting off / lowering.
 """
 
 from __future__ import annotations
@@ -51,18 +58,33 @@ class Kinematics:
         self.q_min, self.q_max = lo + limit_margin, hi - limit_margin
         self.jac_p = np.zeros((3, model.nv))
         self.jac_r = np.zeros((3, model.nv))
-        robot = set(ids.robot_bodies.tolist())
         self.robot_body = np.zeros(model.nbody, dtype=bool)
-        self.robot_body[list(robot)] = True
-        self.finger_body = np.zeros(model.nbody, dtype=bool)
-        self.finger_body[ids.finger_bodies] = True
-        self.hand_side = self.finger_body.copy()
+        self.robot_body[ids.robot_bodies] = True
+        self.hand_side = np.zeros(model.nbody, dtype=bool)
+        self.hand_side[ids.finger_bodies] = True
         self.hand_side[ids.hand] = True
+        self.body_part = {pi.body: pid for pid, pi in ids.parts.items()}
+        self.table_body = ids.table_body
 
-    def load(self, qpos_full: np.ndarray, q: np.ndarray | None = None) -> None:
-        self.d.qpos[:] = qpos_full
-        if q is not None:
-            self.d.qpos[self.ids.arm_qadr] = q
+    # ------------------------------------------------------------------ planning world
+
+    def set_world(self, data: mujoco.MjData, part_poses: dict) -> None:
+        """Proprioception (arm/finger joints) + known static geometry (mocap) from `data`; every movable part
+        pose from `part_poses` {part_id: (position (3,), yaw)}. Raises KeyError if a movable part is missing."""
+        d = self.d
+        d.qpos[:] = 0.0
+        a = self.ids.arm_qadr
+        d.qpos[a] = data.qpos[a]
+        f = self.ids.finger_qadr
+        d.qpos[f] = data.qpos[f]
+        d.mocap_pos[:] = data.mocap_pos
+        d.mocap_quat[:] = data.mocap_quat
+        for pid, pi in self.ids.parts.items():
+            if pi.qadr < 0:
+                continue
+            pos, yaw = part_poses[pid]
+            d.qpos[pi.qadr:pi.qadr + 3] = pos
+            d.qpos[pi.qadr + 3:pi.qadr + 7] = [np.cos(yaw / 2), 0.0, 0.0, np.sin(yaw / 2)]
 
     def fk(self, q: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         self.d.qpos[self.ids.arm_qadr] = q
@@ -122,45 +144,53 @@ class Kinematics:
 
     # ------------------------------------------------------------------ collision checks
 
-    def contacts_at(self, q: np.ndarray, allow_hand_block: bool, allow_block_table: bool,
-                    margin: float = 0.0) -> str | None:
-        """First disallowed robot contact at q with the scratch state (block where loaded), or None."""
+    def _name(self, b: int) -> str:
+        if b == 0:
+            return "floor"
+        pid = self.body_part.get(b)
+        return f"part '{pid}'" if pid else self.m.body(b).name
+
+    def contacts_at(self, q: np.ndarray, carried: int | None = None, allow_carried_table: bool = False) -> str | None:
+        """First disallowed contact at arm configuration q in the planning world, or None."""
         self.d.qpos[self.ids.arm_qadr] = q
         mujoco.mj_forward(self.m, self.d)
         m, d = self.m, self.d
         for c in d.contact[: d.ncon]:
-            if c.dist > -margin:
+            if c.dist > 0:
                 continue
             b1, b2 = m.geom_bodyid[c.geom1], m.geom_bodyid[c.geom2]
             r1, r2 = self.robot_body[b1], self.robot_body[b2]
-            blk = self.ids.block_body
+            if r1 and r2:
+                return f"self-collision {m.body(b1).name}-{m.body(b2).name}"
             if r1 or r2:
-                other = b2 if r1 else b1
-                mine = b1 if r1 else b2
-                if self.robot_body[other]:
-                    return f"self-collision {m.body(b1).name}-{m.body(b2).name}"
-                if other == blk and allow_hand_block and self.hand_side[mine]:
+                mine, other = (b1, b2) if r1 else (b2, b1)
+                if carried is not None and other == carried and self.hand_side[mine]:
                     continue
-                return f"{m.body(mine).name} would hit {m.body(other).name if other else 'floor'}"
-            if blk in (b1, b2) and not allow_block_table:
-                other = b2 if b1 == blk else b1
-                return f"block would hit {m.body(other).name if other else 'floor'}"
+                return f"{m.body(mine).name} would hit {self._name(other)}"
+            if carried is not None and carried in (b1, b2):
+                other = b2 if b1 == carried else b1
+                if other == self.table_body and allow_carried_table:
+                    continue
+                return f"carried {self._name(carried)} would hit {self._name(other)}"
         return None
 
-    def path_collision(self, qs, allow_hand_block=False, allow_block_table=True, carry=None,
-                       margin: float = 0.0) -> str | None:
-        """Check sampled joint configurations. `carry` = (block offset in hand frame, block quat in hand frame):
-        the planning copy of the block moves with the hand (prediction only; the live block is never attached)."""
-        a = self.ids.block_qadr
+    def path_collision(self, qs, carried_part: str | None = None, carry=None, allow_carried_table: bool = False) -> str | None:
+        """Check sampled joint configurations. `carry` = (part offset in hand frame, part rotation in hand frame):
+        the planning copy of the carried part moves with the hand (prediction only; the live part is never attached)."""
+        carried = None
+        if carried_part is not None:
+            pi = self.ids.parts[carried_part]
+            carried = pi.body
         for q in qs:
-            if carry is not None:
+            if carry is not None and carried is not None:
                 h, Rh = self.hand_pose(q)
                 off, Rrel = carry
+                a = self.ids.parts[carried_part].qadr
                 self.d.qpos[a:a + 3] = h + Rh @ off
                 qq = np.zeros(4)
                 mujoco.mju_mat2Quat(qq, (Rh @ Rrel).ravel())
                 self.d.qpos[a + 3:a + 7] = qq
-            hit = self.contacts_at(q, allow_hand_block, allow_block_table, margin)
+            hit = self.contacts_at(q, carried, allow_carried_table)
             if hit:
                 return hit
         return None

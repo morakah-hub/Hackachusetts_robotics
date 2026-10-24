@@ -11,12 +11,15 @@ export function quatWXYZ(q: number[]): THREE.Quaternion {
   return new THREE.Quaternion(q[1], q[2], q[3], q[0]);
 }
 
-export type DragTarget = "block" | "pad";
+/** Body name of a draggable item: "part_<id>" or "dest_<id>". */
+export type DragTarget = string;
 
 export interface SceneViewCallbacks {
   onDragEnd: (target: DragTarget, x: number, y: number) => void;
   onSelect: (target: DragTarget) => void;
 }
+
+export interface Marker { body: string; text: string; color: string }
 
 export class SceneView {
   renderer: THREE.WebGLRenderer;
@@ -24,11 +27,12 @@ export class SceneView {
   camera: THREE.PerspectiveCamera;
   controls: OrbitControls;
   bodies = new Map<string, THREE.Group>();
+  private content = new THREE.Group();
   private raf = 0;
   private ro: ResizeObserver;
-  private estimateBox: THREE.LineSegments;
-  private estimateLabel: THREE.Sprite;
-  private workspace: THREE.Group;
+  private estimates = new THREE.Group();
+  private markers = new THREE.Group();
+  private workspace = new THREE.Group();
   private frustum: THREE.Group | null = null;
   private selection: THREE.LineSegments;
   private raycaster = new THREE.Raycaster();
@@ -36,10 +40,15 @@ export class SceneView {
   private dragOffset = new THREE.Vector3();
   private dragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -0.4);
   private hold: { target: DragTarget; until: number } | null = null;
+  private sizes = new Map<string, number[]>();     // body -> full size (parts: xyz, dests: xy)
+  private draggable = new Set<string>();
+  private proxies: THREE.Object3D[] = [];
+  private unitEdges = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+  showProxies = false;
   editable = false;
-  selected: DragTarget | null = "block";
+  selected: DragTarget | null = null;
   tableTop = 0.4;
-  private blockHalf = new THREE.Vector3(0.025, 0.025, 0.03);
+  geometryRev = -1;
 
   constructor(private host: HTMLElement, private cb: SceneViewCallbacks) {
     const r = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -68,8 +77,7 @@ export class SceneView {
     this.controls.minDistance = 0.5;
     this.controls.maxDistance = 5;
 
-    const hemi = new THREE.HemisphereLight("#e9eef2", "#2a2622", 0.7);
-    this.scene.add(hemi);
+    this.scene.add(new THREE.HemisphereLight("#e9eef2", "#2a2622", 0.7));
     const key = new THREE.DirectionalLight("#fff6ea", 2.3);
     key.position.set(1.6, -1.2, 2.6);
     key.target.position.set(0.4, 0, 0.4);
@@ -84,20 +92,13 @@ export class SceneView {
     rim.position.set(-1.5, 1.4, 1.6);
     this.scene.add(rim);
 
-    // camera estimate (wireframe box) and selection outline
-    const unit = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
-    this.estimateBox = new THREE.LineSegments(unit, new THREE.LineBasicMaterial({ color: "#3fe0cf", transparent: true, opacity: 0.95, depthTest: false }));
-    this.estimateBox.renderOrder = 10;
-    this.estimateBox.visible = false;
-    this.scene.add(this.estimateBox);
-    this.estimateLabel = makeLabel("camera estimate", "#3fe0cf");
-    this.estimateLabel.visible = false;
-    this.scene.add(this.estimateLabel);
-    this.selection = new THREE.LineSegments(unit, new THREE.LineBasicMaterial({ color: "#ffd089", transparent: true, opacity: 0.85 }));
+    this.selection = new THREE.LineSegments(this.unitEdges, new THREE.LineBasicMaterial({ color: "#ffd089", transparent: true, opacity: 0.9 }));
     this.selection.visible = false;
-    this.scene.add(this.selection);
-    this.workspace = new THREE.Group();
-    this.scene.add(this.workspace);
+    this.scene.add(this.content, this.estimates, this.markers, this.selection, this.workspace);
+    const grid = new THREE.GridHelper(8, 32, "#34383b", "#2a2d30");
+    grid.rotateX(Math.PI / 2);
+    grid.position.z = 0.0005;
+    this.scene.add(grid);
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(host);
@@ -119,13 +120,7 @@ export class SceneView {
     window.removeEventListener("pointerup", this.onUp);
     this.renderer.domElement.removeEventListener("pointerdown", this.onDown);
     this.renderer.domElement.removeEventListener("pointermove", this.onMove);
-    this.scene.traverse((o) => {
-      const m = o as THREE.Mesh;
-      m.geometry?.dispose?.();
-      const mat = m.material as THREE.Material | THREE.Material[] | undefined;
-      if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
-      else mat?.dispose?.();
-    });
+    disposeTree(this.scene);
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }
@@ -138,9 +133,18 @@ export class SceneView {
   }
 
   // Build meshes from the backend's compiled MuJoCo visual geoms (frames match mj geom_pos/quat).
+  // Called again on every structural scene change; the previous content is disposed first.
   build(vis: Visuals, blob: ArrayBuffer) {
+    disposeTree(this.content);
+    this.content.clear();
+    this.bodies.clear();
+    this.proxies = [];
+    this.sizes.clear();
+    this.draggable.clear();
     this.tableTop = vis.table.top_z;
     this.dragPlane.constant = -this.tableTop;
+    for (const p of vis.parts) { this.sizes.set(p.body, p.size_m); this.draggable.add(p.body); }
+    for (const d of vis.destinations) this.draggable.add(d.body);
     const geoCache = new Map<number, THREE.BufferGeometry>();
     for (const g of vis.geoms) {
       let group = this.bodies.get(g.body);
@@ -148,7 +152,7 @@ export class SceneView {
         group = new THREE.Group();
         group.name = g.body;
         this.bodies.set(g.body, group);
-        this.scene.add(group);
+        this.content.add(group);
       }
       let geom: THREE.BufferGeometry;
       const [sx, sy, sz] = g.size;
@@ -173,33 +177,48 @@ export class SceneView {
         }
         default: continue;
       }
-      const color = new THREE.Color().setRGB(g.rgba[0], g.rgba[1], g.rgba[2], THREE.SRGBColorSpace);
-      const isFloor = g.id === "floor";
-      const isPad = g.body === "pad";
-      const isBlock = g.body === "block";
-      const mat = new THREE.MeshStandardMaterial({
-        color: isFloor ? new THREE.Color("#202224") : color,
-        roughness: isFloor ? 0.95 : isBlock ? 0.45 : Math.max(0.25, 0.6 - 0.5 * g.specular),
-        metalness: 0.02,
-        transparent: g.rgba[3] < 1,
-        opacity: g.rgba[3],
-        emissive: isPad ? color.clone().multiplyScalar(0.25) : new THREE.Color(0),
-      });
-      const mesh = new THREE.Mesh(geom, mat);
-      mesh.position.set(g.pos[0], g.pos[1], g.pos[2]);
-      mesh.quaternion.copy(quatWXYZ(g.quat_wxyz));
-      mesh.castShadow = !isFloor && !isPad;
-      mesh.receiveShadow = true;
-      mesh.userData.body = g.body;
-      group.add(mesh);
-      if (isBlock) this.blockHalf.set(sx, sy, sz);
+      if (g.body.startsWith("dest_")) {
+        const d = vis.destinations.find((x) => x.body === g.body);
+        if (d) this.sizes.set(g.body, [2 * sx, 2 * sy]);
+      }
+      let obj: THREE.Object3D;
+      if (g.proxy) {
+        obj = new THREE.LineSegments(new THREE.EdgesGeometry(geom), new THREE.LineBasicMaterial({ color: "#ffe08a", transparent: true, opacity: 0.85, depthTest: false }));
+        obj.renderOrder = 9;
+        obj.visible = this.showProxies;
+        this.proxies.push(obj);
+      } else {
+        const color = new THREE.Color().setRGB(g.rgba[0], g.rgba[1], g.rgba[2], THREE.SRGBColorSpace);
+        const isFloor = g.id === "floor";
+        const isPad = g.body.startsWith("dest_");
+        const isPart = g.body.startsWith("part_");
+        const mat = new THREE.MeshStandardMaterial({
+          color: isFloor ? new THREE.Color("#202224") : color,
+          roughness: isFloor ? 0.95 : isPart ? 0.5 : Math.max(0.25, 0.6 - 0.5 * g.specular),
+          metalness: 0.02,
+          transparent: g.rgba[3] < 1,
+          opacity: g.rgba[3],
+          emissive: isPad ? color.clone().multiplyScalar(0.25) : new THREE.Color(0),
+          side: g.kind === "mesh" && isPart ? THREE.DoubleSide : THREE.FrontSide,
+        });
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.castShadow = !isFloor && !isPad;
+        mesh.receiveShadow = true;
+        obj = mesh;
+      }
+      obj.position.set(g.pos[0], g.pos[1], g.pos[2]);
+      obj.quaternion.copy(quatWXYZ(g.quat_wxyz));
+      obj.userData.body = g.body;
+      group.add(obj);
     }
-    const grid = new THREE.GridHelper(8, 32, "#34383b", "#2a2d30");
-    grid.rotateX(Math.PI / 2);
-    grid.position.z = 0.0005;
-    this.scene.add(grid);
-    this.buildWorkspace(vis);
-    this.buildFrustum(vis);
+    if (!this.workspace.children.length) this.buildWorkspace(vis);
+    if (!this.frustum) this.buildFrustum(vis);
+    this.geometryRev = vis.geometry_rev;
+  }
+
+  setShowProxies(v: boolean) {
+    this.showProxies = v;
+    for (const p of this.proxies) p.visible = v;
   }
 
   private buildWorkspace(vis: Visuals) {
@@ -231,13 +250,11 @@ export class SceneView {
     const pts = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([x, y]) => new THREE.Vector3(x, y, -d));
     const lines: THREE.Vector3[] = [];
     pts.forEach((p, i) => { lines.push(new THREE.Vector3(), p, p, pts[(i + 1) % 4]); });
-    const fr = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(lines), new THREE.LineBasicMaterial({ color: "#3fe0cf", transparent: true, opacity: 0.35 }));
-    g.add(fr);
+    g.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(lines), new THREE.LineBasicMaterial({ color: "#3fe0cf", transparent: true, opacity: 0.35 })));
     g.position.copy(pos);
     g.up.set(0, 0, 1);
     g.lookAt(tgt);           // Object3D.lookAt points +Z at target for non-cameras
     g.rotateY(Math.PI);      // camera optics look along local -Z
-    g.traverse((o) => { o.castShadow = false; });
     this.frustum = g;
     this.scene.add(g);
   }
@@ -246,12 +263,13 @@ export class SceneView {
 
   update(snap: Snapshot) {
     const now = performance.now();
-    for (const [name, p] of Object.entries(snap.poses)) {
-      const g = this.bodies.get(name);
-      if (!g) continue;
+    for (const [name, group] of this.bodies) {
+      const p = snap.poses[name];
+      group.visible = !!p || name === "world" || name === "table";
+      if (!p) continue;
       if (this.dragging === name || (this.hold && this.hold.target === name && now < this.hold.until)) continue;
-      g.position.set(p[0], p[1], p[2]);
-      g.quaternion.set(p[4], p[5], p[6], p[3]);
+      group.position.set(p[0], p[1], p[2]);
+      group.quaternion.set(p[4], p[5], p[6], p[3]);
     }
     if (this.hold && now >= this.hold.until) this.hold = null;
     this.workspace.visible = this.editable;
@@ -260,37 +278,58 @@ export class SceneView {
 
   releaseHold() { this.hold = null; }
 
-  setEstimate(est: Estimate | null, label = "camera estimate") {
-    if (!est || !est.valid || !est.position_m) {
-      this.estimateBox.visible = false;
-      this.estimateLabel.visible = false;
-      return;
+  setEstimates(est: Record<string, Estimate>, labelFor: (id: string) => string) {
+    disposeTree(this.estimates);
+    this.estimates.clear();
+    for (const [id, e] of Object.entries(est)) {
+      if (!e.valid || !e.position_m) continue;
+      const size = this.sizes.get(`part_${id}`) ?? [0.05, 0.05, 0.06];
+      const box = new THREE.LineSegments(this.unitEdges, new THREE.LineBasicMaterial({ color: "#3fe0cf", transparent: true, opacity: 0.95, depthTest: false }));
+      box.renderOrder = 10;
+      box.position.set(e.position_m[0], e.position_m[1], e.position_m[2]);
+      box.scale.set(size[0] + 0.006, size[1] + 0.006, size[2] + 0.006);
+      box.rotation.set(0, 0, e.yaw_rad ?? 0);
+      const lbl = makeLabel(labelFor(id), "#3fe0cf");
+      lbl.position.set(e.position_m[0], e.position_m[1], e.position_m[2] + size[2] / 2 + 0.04);
+      this.estimates.add(box, lbl);
     }
-    const [x, y, z] = est.position_m;
-    this.estimateBox.position.set(x, y, z);
-    this.estimateBox.scale.set(2 * this.blockHalf.x + 0.006, 2 * this.blockHalf.y + 0.006, 2 * this.blockHalf.z + 0.006);
-    this.estimateBox.rotation.set(0, 0, est.yaw_rad ?? 0);
-    this.estimateBox.visible = true;
-    const lbl = makeLabelTexture(label, "#3fe0cf");
-    (this.estimateLabel.material as THREE.SpriteMaterial).map?.dispose();
-    (this.estimateLabel.material as THREE.SpriteMaterial).map = lbl;
-    this.estimateLabel.position.set(x, y, z + 0.07);
-    this.estimateLabel.visible = true;
+  }
+
+  setMarkers(markers: Marker[]) {
+    disposeTree(this.markers);
+    this.markers.clear();
+    for (const m of markers) {
+      const g = this.bodies.get(m.body);
+      if (!g) continue;
+      const s = makeLabel(m.text, m.color, 0.85);
+      s.userData.follow = m.body;
+      s.position.set(g.position.x, g.position.y, this.tableTop + 0.035);
+      this.markers.add(s);
+    }
+  }
+
+  refreshMarkers() {
+    for (const s of this.markers.children) {
+      const g = this.bodies.get(s.userData.follow as string);
+      if (g) s.position.set(g.position.x, g.position.y, this.tableTop + 0.035);
+    }
   }
 
   private updateSelection() {
     const target = this.selected ? this.bodies.get(this.selected) : null;
-    if (!target || !this.editable) { this.selection.visible = false; return; }
+    if (!target || !this.editable || !target.visible) { this.selection.visible = false; return; }
     this.selection.visible = true;
-    if (this.selected === "block") {
+    const size = this.sizes.get(this.selected!) ?? [0.08, 0.08];
+    if (this.selected!.startsWith("part_")) {
       this.selection.position.copy(target.position);
       this.selection.quaternion.copy(target.quaternion);
-      this.selection.scale.set(2 * this.blockHalf.x + 0.012, 2 * this.blockHalf.y + 0.012, 2 * this.blockHalf.z + 0.012);
+      this.selection.scale.set(size[0] + 0.012, size[1] + 0.012, (size[2] ?? 0.05) + 0.012);
     } else {
       this.selection.position.set(target.position.x, target.position.y, this.tableTop + 0.003);
-      this.selection.quaternion.identity();
-      this.selection.scale.set(0.09, 0.09, 0.004);
+      this.selection.quaternion.copy(target.quaternion);
+      this.selection.scale.set(size[0] + 0.01, size[1] + 0.01, 0.004);
     }
+    this.refreshMarkers();
   }
 
   private pointer(ev: PointerEvent) {
@@ -300,8 +339,8 @@ export class SceneView {
 
   private pick(ev: PointerEvent): DragTarget | null {
     this.raycaster.setFromCamera(this.pointer(ev), this.camera);
-    const objs = ["block", "pad"].map((n) => this.bodies.get(n)).filter(Boolean) as THREE.Object3D[];
-    const hit = this.raycaster.intersectObjects(objs, true)[0];
+    const objs = [...this.draggable].map((n) => this.bodies.get(n)).filter((g) => g && g.visible) as THREE.Object3D[];
+    const hit = this.raycaster.intersectObjects(objs, true).find((h) => !(h.object instanceof THREE.LineSegments));
     return hit ? ((hit.object.userData.body as DragTarget) ?? null) : null;
   }
 
@@ -360,28 +399,41 @@ export class SceneView {
   }
 }
 
+function disposeTree(root: THREE.Object3D) {
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.geometry && !(m.geometry as THREE.BufferGeometry & { shared?: boolean }).shared) m.geometry.dispose?.();
+    const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+    if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+    else if (mat) {
+      (mat as THREE.SpriteMaterial).map?.dispose?.();
+      mat.dispose?.();
+    }
+  });
+}
+
 function makeLabelTexture(text: string, color: string): THREE.CanvasTexture {
   const c = document.createElement("canvas");
-  c.width = 256; c.height = 64;
+  c.width = 320; c.height = 64;
   const ctx = c.getContext("2d")!;
-  ctx.font = "600 26px Inter, Segoe UI, sans-serif";
+  ctx.font = "600 25px Inter, Segoe UI, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillStyle = "rgba(16,18,20,0.78)";
-  const w = ctx.measureText(text).width + 28;
+  ctx.fillStyle = "rgba(16,18,20,0.8)";
+  const w = Math.min(310, ctx.measureText(text).width + 28);
   ctx.beginPath();
-  ctx.roundRect((256 - w) / 2, 10, w, 44, 12);
+  ctx.roundRect((320 - w) / 2, 10, w, 44, 12);
   ctx.fill();
   ctx.fillStyle = color;
-  ctx.fillText(text, 128, 33);
+  ctx.fillText(text, 160, 33, 290);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
 
-function makeLabel(text: string, color: string): THREE.Sprite {
+function makeLabel(text: string, color: string, scale = 1): THREE.Sprite {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeLabelTexture(text, color), depthTest: false, transparent: true }));
-  s.scale.set(0.2, 0.05, 1);
+  s.scale.set(0.25 * scale, 0.05 * scale, 1);
   s.renderOrder = 11;
   return s;
 }

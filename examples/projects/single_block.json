@@ -1,0 +1,79 @@
+{
+ "format": "armstrong-project",
+ "version": 1,
+ "name": "Single block (original demo)",
+ "description": "The v0.1 regression scene: one 50 x 50 x 60 mm block moved to one pad.",
+ "saved_at": "2026-10-24T16:00:00",
+ "scene": {
+  "version": 1,
+  "name": "Single block (original demo)",
+  "camera": {
+   "id": "rgbd",
+   "position": [
+    1.18,
+    0.0,
+    1.02
+   ],
+   "target": [
+    0.5,
+    0.0,
+    0.4
+   ],
+   "vertical_fov_deg": 45.0,
+   "width": 320,
+   "height": 240,
+   "rate_hz": 5.0
+  },
+  "parts": [
+   {
+    "id": "block",
+    "name": "Orange block",
+    "role": "movable",
+    "asset_id": null,
+    "size": [
+     0.05,
+     0.05,
+     0.06
+    ],
+    "mass": 0.4,
+    "friction": 1.0,
+    "material": null,
+    "color": "orange",
+    "category": "",
+    "x": 0.5,
+    "y": 0.2,
+    "yaw": 0.0
+   }
+  ],
+  "destinations": [
+   {
+    "id": "pad",
+    "name": "Destination pad",
+    "x": 0.5,
+    "y": -0.2,
+    "yaw": null,
+    "zone": "",
+    "size": [
+     0.08,
+     0.08
+    ]
+   }
+  ]
+ },
+ "recipe": {
+  "version": 1,
+  "name": "Move block to pad",
+  "steps": [
+   {
+    "id": "s1",
+    "part": "block",
+    "action": "place",
+    "dest": "pad"
+   }
+  ],
+  "sort_rules": []
+ },
+ "settings": {
+  "perception_mode": "camera_rgbd"
+ }
+}

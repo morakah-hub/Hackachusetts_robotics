@@ -1,11 +1,18 @@
+# machine-specific environments and tools
 .venv/
 .tools/
 frontend/node_modules/
+# generated output (the release ZIP ships a freshly built frontend/dist)
 frontend/dist/
+release/
 runtime/
+# private user data: uploaded meshes and saved projects
+user_data/
+# caches and logs
 __pycache__/
 *.pyc
 .pytest_cache/
 *.log
+# historical reference material (prior project; not part of this application)
 handoff/
 .env

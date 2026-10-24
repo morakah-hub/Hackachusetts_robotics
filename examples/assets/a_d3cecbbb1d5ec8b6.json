@@ -1,0 +1,40 @@
+{
+ "id": "a_d3cecbbb1d5ec8b6",
+ "source_name": "spacer_40x60x45_mm.stl",
+ "source_format": "binary",
+ "units": "mm",
+ "scale": 1.0,
+ "rotation_deg": [
+  0,
+  0,
+  0
+ ],
+ "source_triangles": 28,
+ "dims_m": [
+  0.04,
+  0.06,
+  0.045
+ ],
+ "triangles": 28,
+ "vertices": 16,
+ "watertight": true,
+ "volume_m3": 0.00010656000000000001,
+ "box_volume_m3": 0.00010799999999999998,
+ "fill_ratio": 0.9866666666666669,
+ "top_face_fraction": 0.9866666666666667,
+ "collision_proxy": "box (bounding box of the mesh)",
+ "eligible": {
+  "movable": {
+   "ok": true,
+   "reasons": []
+  },
+  "fixture": {
+   "ok": true,
+   "reasons": []
+  },
+  "visual": {
+   "ok": true,
+   "reasons": []
+  }
+ }
+}

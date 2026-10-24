@@ -1,0 +1,190 @@
+{
+ "format": "armstrong-project",
+ "version": 1,
+ "name": "2 x 2 arrangement",
+ "description": "Four blocks arranged into a 2 x 2 grid of slots 100 mm apart (about 75 s of simulated time).",
+ "saved_at": "2026-10-24T16:00:00",
+ "scene": {
+  "version": 1,
+  "name": "2 x 2 arrangement",
+  "camera": {
+   "id": "rgbd",
+   "position": [
+    1.18,
+    0.0,
+    1.02
+   ],
+   "target": [
+    0.5,
+    0.0,
+    0.4
+   ],
+   "vertical_fov_deg": 45.0,
+   "width": 320,
+   "height": 240,
+   "rate_hz": 5.0
+  },
+  "parts": [
+   {
+    "id": "g1",
+    "name": "Orange block",
+    "role": "movable",
+    "asset_id": null,
+    "size": [
+     0.05,
+     0.05,
+     0.06
+    ],
+    "mass": 0.4,
+    "friction": 1.0,
+    "material": null,
+    "color": "orange",
+    "category": "",
+    "x": 0.4,
+    "y": 0.26,
+    "yaw": 0.0
+   },
+   {
+    "id": "g2",
+    "name": "Blue block",
+    "role": "movable",
+    "asset_id": null,
+    "size": [
+     0.05,
+     0.05,
+     0.06
+    ],
+    "mass": 0.4,
+    "friction": 1.0,
+    "material": null,
+    "color": "blue",
+    "category": "",
+    "x": 0.52,
+    "y": 0.26,
+    "yaw": 0.0
+   },
+   {
+    "id": "g3",
+    "name": "Green block",
+    "role": "movable",
+    "asset_id": null,
+    "size": [
+     0.05,
+     0.05,
+     0.06
+    ],
+    "mass": 0.4,
+    "friction": 1.0,
+    "material": null,
+    "color": "green",
+    "category": "",
+    "x": 0.4,
+    "y": 0.14,
+    "yaw": 0.0
+   },
+   {
+    "id": "g4",
+    "name": "Magenta block",
+    "role": "movable",
+    "asset_id": null,
+    "size": [
+     0.05,
+     0.05,
+     0.06
+    ],
+    "mass": 0.4,
+    "friction": 1.0,
+    "material": null,
+    "color": "magenta",
+    "category": "",
+    "x": 0.52,
+    "y": 0.14,
+    "yaw": 0.0
+   }
+  ],
+  "destinations": [
+   {
+    "id": "c11",
+    "name": "Grid A1",
+    "x": 0.43,
+    "y": -0.1,
+    "yaw": null,
+    "zone": "",
+    "size": [
+     0.08,
+     0.08
+    ]
+   },
+   {
+    "id": "c12",
+    "name": "Grid A2",
+    "x": 0.53,
+    "y": -0.1,
+    "yaw": null,
+    "zone": "",
+    "size": [
+     0.08,
+     0.08
+    ]
+   },
+   {
+    "id": "c21",
+    "name": "Grid B1",
+    "x": 0.43,
+    "y": -0.2,
+    "yaw": null,
+    "zone": "",
+    "size": [
+     0.08,
+     0.08
+    ]
+   },
+   {
+    "id": "c22",
+    "name": "Grid B2",
+    "x": 0.53,
+    "y": -0.2,
+    "yaw": null,
+    "zone": "",
+    "size": [
+     0.08,
+     0.08
+    ]
+   }
+  ]
+ },
+ "recipe": {
+  "version": 1,
+  "name": "Fill the 2 x 2 grid",
+  "steps": [
+   {
+    "id": "s1",
+    "part": "g1",
+    "action": "place",
+    "dest": "c11"
+   },
+   {
+    "id": "s2",
+    "part": "g2",
+    "action": "place",
+    "dest": "c12"
+   },
+   {
+    "id": "s3",
+    "part": "g3",
+    "action": "place",
+    "dest": "c21"
+   },
+   {
+    "id": "s4",
+    "part": "g4",
+    "action": "place",
+    "dest": "c22"
+   }
+  ],
+  "sort_rules": []
+ },
+ "settings": {
+  "perception_mode": "camera_rgbd"
+ }
+}

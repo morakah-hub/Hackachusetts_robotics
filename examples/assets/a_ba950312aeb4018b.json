@@ -1,0 +1,45 @@
+{
+ "id": "a_ba950312aeb4018b",
+ "source_name": "l_bracket_mm.stl",
+ "source_format": "binary",
+ "units": "mm",
+ "scale": 1.0,
+ "rotation_deg": [
+  0,
+  0,
+  0
+ ],
+ "source_triangles": 20,
+ "dims_m": [
+  0.08,
+  0.04,
+  0.06
+ ],
+ "triangles": 20,
+ "vertices": 12,
+ "watertight": true,
+ "volume_m3": 5.2e-05,
+ "box_volume_m3": 0.000192,
+ "fill_ratio": 0.2708333333333333,
+ "top_face_fraction": 0.12500000000000003,
+ "collision_proxy": "box (bounding box of the mesh)",
+ "eligible": {
+  "movable": {
+   "ok": false,
+   "reasons": [
+    "shape fills only 27% of its bounding box (needs 75%); a box collision proxy would misrepresent it",
+    "flat top face covers 13% of the footprint (needs 60%); the camera localizer measures the top face"
+   ]
+  },
+  "fixture": {
+   "ok": false,
+   "reasons": [
+    "concave or open shapes are not converted to a single box obstacle in this version (use it as a visual reference)"
+   ]
+  },
+  "visual": {
+   "ok": true,
+   "reasons": []
+  }
+ }
+}
